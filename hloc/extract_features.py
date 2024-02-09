@@ -2,6 +2,8 @@ import argparse
 import collections.abc as collections
 import glob
 import pprint
+import timeit
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, List, Optional, Union
@@ -218,6 +220,12 @@ class ImageDataset(torch.utils.data.Dataset):
         return len(self.names)
 
 
+@contextmanager
+def _timer():
+    start = timeit.default_timer()
+    yield lambda: timeit.default_timer() - start
+
+
 @torch.no_grad()
 def main(
     conf: Dict,
@@ -253,10 +261,14 @@ def main(
     )
     for idx, data in enumerate(tqdm(loader)):
         name = dataset.names[idx]
-        pred = model({"image": data["image"].to(device, non_blocking=True)})
+        with _timer() as elapsed:
+            pred = model({"image": data["image"].to(device, non_blocking=True)})
+            exec_time = elapsed()
         pred = {k: v[0].cpu().numpy() for k, v in pred.items()}
 
         pred["image_size"] = original_size = data["original_size"][0].numpy()
+        pred["execution_time"] = np.array([exec_time], dtype=np.float32)
+
         if "keypoints" in pred:
             size = np.array(data["image"].shape[-2:][::-1])
             scales = (original_size / size).astype(np.float32)
@@ -281,6 +293,7 @@ def main(
                     grp.create_dataset(k, data=v)
                 if "keypoints" in pred:
                     grp["keypoints"].attrs["uncertainty"] = uncertainty
+                grp.attrs["execution_time"] = pred["execution_time"]
             except OSError as error:
                 if "No space left on device" in error.args[0]:
                     logger.error(
