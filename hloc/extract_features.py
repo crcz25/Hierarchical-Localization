@@ -267,7 +267,7 @@ def main(
         pred = {k: v[0].cpu().numpy() for k, v in pred.items()}
 
         pred["image_size"] = original_size = data["original_size"][0].numpy()
-        pred["execution_time"] = np.array([exec_time], dtype=np.float32)
+        pred["exec_time"] = np.array([exec_time], dtype=np.float32)
 
         if "keypoints" in pred:
             size = np.array(data["image"].shape[-2:][::-1])
@@ -293,7 +293,7 @@ def main(
                     grp.create_dataset(k, data=v)
                 if "keypoints" in pred:
                     grp["keypoints"].attrs["uncertainty"] = uncertainty
-                grp.attrs["execution_time"] = pred["execution_time"]
+                grp.attrs["exec_time"] = pred["exec_time"]
             except OSError as error:
                 if "No space left on device" in error.args[0]:
                     logger.error(

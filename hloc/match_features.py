@@ -1,5 +1,7 @@
 import argparse
 import pprint
+import timeit
+from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
 from queue import Queue
@@ -7,6 +9,7 @@ from threading import Thread
 from typing import Dict, List, Optional, Tuple, Union
 
 import h5py
+import numpy as np
 import torch
 from tqdm import tqdm
 
@@ -143,6 +146,7 @@ def writer_fn(inp, match_path):
         if "matching_scores0" in pred:
             scores = pred["matching_scores0"][0].cpu().half().numpy()
             grp.create_dataset("matching_scores0", data=scores)
+        grp.create_dataset("exec_time", data=pred["exec_time"])
 
 
 def main(
@@ -199,6 +203,12 @@ def find_unique_new_pairs(pairs_all: List[Tuple[str]], match_path: Path = None):
     return pairs
 
 
+@contextmanager
+def _timer():
+    start = timeit.default_timer()
+    yield lambda: timeit.default_timer() - start
+
+
 @torch.no_grad()
 def match_from_paths(
     conf: Dict,
@@ -241,8 +251,11 @@ def match_from_paths(
             k: v if k.startswith("image") else v.to(device, non_blocking=True)
             for k, v in data.items()
         }
-        pred = model(data)
+        with _timer() as elapsed:
+            pred = model(data)
+            exec_time = elapsed()
         pair = names_to_pair(*pairs[idx])
+        pred["exec_time"] = np.array([exec_time], dtype=np.float32)
         writer_queue.put((pair, pred))
     writer_queue.join()
     logger.info("Finished exporting matches.")
