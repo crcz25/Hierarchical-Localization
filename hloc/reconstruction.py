@@ -4,7 +4,13 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import dask.dataframe as dd
+import pandas as pd
 import pycolmap
+import yaml
+from sqlalchemy import create_engine, insert
+from sqlalchemy.orm import sessionmaker
+from tqdm import tqdm
 
 from . import logger
 from .triangulation import (
@@ -103,6 +109,47 @@ def run_reconstruction(
     return reconstructions[largest_index]
 
 
+def generate_camera_config(path: Path):
+    yaml_cameras = yaml.load(
+        open(path, "r"),
+        Loader=yaml.FullLoader,
+    )
+    configs = {}
+    for idx, (camera, params) in enumerate(yaml_cameras.items()):
+        fu, fv, pu, pv = params["intrinsics"]
+        width, height = params["resolution"]
+        # Camera model 1 is the pinhole camera model in COLMAP
+        configs[camera] = {
+            "camera_id": idx,
+            "model": 1,
+            "width": width,
+            "height": height,
+            "params": [fu, fv, pu, pv],
+        }
+    return configs
+
+
+def add_cameras_to_db(database_path: Path, camera_params: dict):
+    db = COLMAPDatabase.connect(database_path)
+    for _, camera_param in tqdm(camera_params.items(), total=len(camera_params)):
+        db.add_camera(
+            camera_id=camera_param["camera_id"],
+            model=camera_param["model"],
+            width=camera_param["width"],
+            height=camera_param["height"],
+            params=camera_param["params"],
+        )
+    db.commit()
+    db.close()
+
+
+def add_images_to_db(database_path: Path, image_name: str, cam_id: int):
+    db = COLMAPDatabase.connect(database_path)
+    db.add_image(name=image_name, camera_id=cam_id)
+    db.commit()
+    db.close()
+
+
 def main(
     sfm_dir: Path,
     image_dir: Path,
@@ -116,6 +163,7 @@ def main(
     image_list: Optional[List[str]] = None,
     image_options: Optional[Dict[str, Any]] = None,
     mapper_options: Optional[Dict[str, Any]] = None,
+    calib_file: Path = None,
 ) -> pycolmap.Reconstruction:
     assert features.exists(), features
     assert pairs.exists(), pairs
@@ -125,7 +173,30 @@ def main(
     database = sfm_dir / "database.db"
 
     create_empty_db(database)
-    import_images(image_dir, database, camera_mode, image_list, image_options)
+
+    if calib_file is not None:
+        camera_params = generate_camera_config(path=calib_file)
+        add_cameras_to_db(database_path=database, camera_params=camera_params)
+        df_cameras = pd.DataFrame.from_dict(camera_params, orient="index").reset_index()
+        df_cameras = df_cameras.rename(columns={"index": "camera"})
+        df_cameras = df_cameras[["camera_id", "camera"]].astype(
+            {"camera_id": "int32", "camera": "string"}
+        )
+        del camera_params
+
+        # Add images to the database
+        valid_extensions = [".png", ".jpg", ".jpeg"]
+        for image in image_dir.glob("**/*"):
+            if image.suffix.lower() in valid_extensions:
+                image_name = image.name
+                mask = df_cameras["camera"].apply(lambda x: x in image_name)
+                camera_id = df_cameras.loc[mask, "camera_id"].values[0]
+                add_images_to_db(
+                    database_path=database, image_name=image_name, cam_id=int(camera_id)
+                )
+    else:
+        import_images(image_dir, database, camera_mode, image_list, image_options)
+
     image_ids = get_image_ids(database)
     import_features(image_ids, database, features)
     import_matches(
@@ -181,6 +252,12 @@ if __name__ == "__main__":
         help="List of key=value from {}".format(
             pycolmap.IncrementalMapperOptions().todict()
         ),
+    )
+    parser.add_argument(
+        "--calib_file",
+        type=Path,
+        default=None,
+        help="YAML file containing the camera calibration parameters",
     )
     args = parser.parse_args().__dict__
 
