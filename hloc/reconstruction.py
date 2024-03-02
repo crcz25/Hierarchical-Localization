@@ -188,11 +188,12 @@ def main(
         valid_extensions = [".png", ".jpg", ".jpeg"]
         for image in image_dir.glob("**/*"):
             if image.suffix.lower() in valid_extensions:
-                image_name = image.name
-                mask = df_cameras["camera"].apply(lambda x: x in image_name)
+                mask = df_cameras["camera"].apply(lambda x: x in image.as_posix())
                 camera_id = df_cameras.loc[mask, "camera_id"].values[0]
                 add_images_to_db(
-                    database_path=database, image_name=image_name, cam_id=int(camera_id)
+                    database_path=database,
+                    image_name=image.name,
+                    cam_id=int(camera_id),
                 )
     else:
         import_images(image_dir, database, camera_mode, image_list, image_options)
