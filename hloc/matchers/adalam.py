@@ -60,7 +60,8 @@ class AdaLAM(BaseModel):
             dtype=torch.int64,
             device=data["keypoints0"].device,
         )
-        matches_new[matches[:, 0]] = matches[:, 1]
+        if matches.size(0) > 0:
+            matches_new[matches[:, 0]] = matches[:, 1]
         return {
             "matches0": matches_new.unsqueeze(0),
             "matching_scores0": torch.zeros(matches_new.size(0)).unsqueeze(0),
