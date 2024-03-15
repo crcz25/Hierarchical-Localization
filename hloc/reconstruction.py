@@ -190,9 +190,10 @@ def main(
             if image.suffix.lower() in valid_extensions:
                 mask = df_cameras["camera"].apply(lambda x: x in image.as_posix())
                 camera_id = df_cameras.loc[mask, "camera_id"].values[0]
+                image_name = image.parent.name + "/" + image.name
                 add_images_to_db(
                     database_path=database,
-                    image_name=image.name,
+                    image_name=image_name,
                     cam_id=int(camera_id),
                 )
     else:
