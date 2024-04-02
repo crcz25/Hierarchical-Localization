@@ -78,7 +78,7 @@ def run_reconstruction(
     logger.info("Running 3D reconstruction...")
     if options is None:
         options = {}
-    options = {"num_threads": min(multiprocessing.cpu_count(), 16), **options}
+    options = {"num_threads": min(multiprocessing.cpu_count(), 40), **options}
     with OutputCapture(verbose):
         with pycolmap.ostream():
             reconstructions = pycolmap.incremental_mapping(
@@ -190,10 +190,9 @@ def main(
             if image.suffix.lower() in valid_extensions:
                 mask = df_cameras["camera"].apply(lambda x: x in image.as_posix())
                 camera_id = df_cameras.loc[mask, "camera_id"].values[0]
-                image_name = image.parent.name + "/" + image.name
                 add_images_to_db(
                     database_path=database,
-                    image_name=image_name,
+                    image_name=image.name,
                     cam_id=int(camera_id),
                 )
     else:
