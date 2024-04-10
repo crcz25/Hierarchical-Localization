@@ -43,15 +43,15 @@ confs = {
     # Resize images to 1600px even if they are originally smaller.
     # Improves the keypoint localization if the images are of good quality.
     "superpoint_max": {
-        "output": "feats-superpoint-n4096-rmax1600",
+        "output": "feats-superpoint-n8000-rmax1024",
         "model": {
             "name": "superpoint",
             "nms_radius": 3,
-            "max_keypoints": 4096,
+            "max_keypoints": 8000,
         },
         "preprocessing": {
             "grayscale": True,
-            "resize_max": 1600,
+            "resize_max": 1024,
             "resize_force": True,
         },
     },
@@ -68,10 +68,10 @@ confs = {
         },
     },
     "r2d2": {
-        "output": "feats-r2d2-n5000-r1024",
+        "output": "feats-r2d2-n8000-r1024",
         "model": {
             "name": "r2d2",
-            "max_keypoints": 5000,
+            "max_keypoints": 8000,
         },
         "preprocessing": {
             "grayscale": False,
@@ -79,14 +79,15 @@ confs = {
         },
     },
     "d2net-ss": {
-        "output": "feats-d2net-ss",
+        "output": "feats-d2net-ss-n8000-r1024",
         "model": {
             "name": "d2net",
             "multiscale": False,
+            "max_keypoints": 8000,
         },
         "preprocessing": {
             "grayscale": False,
-            "resize_max": 1600,
+            "resize_max": 1024,
         },
     },
     "sift": {
@@ -94,26 +95,26 @@ confs = {
         "model": {"name": "dog"},
         "preprocessing": {
             "grayscale": True,
-            "resize_max": 1600,
+            "resize_max": 1024,
         },
     },
     "sosnet": {
-        "output": "feats-sosnet",
-        "model": {"name": "dog", "descriptor": "sosnet"},
+        "output": "feats-sosnet-n8000-r1024",
+        "model": {"name": "dog", "descriptor": "sosnet", "max_keypoints": 8000},
         "preprocessing": {
             "grayscale": True,
-            "resize_max": 1600,
+            "resize_max": 1024,
         },
     },
     "disk": {
-        "output": "feats-disk",
+        "output": "feats-disk-n8000-r1024",
         "model": {
             "name": "disk",
-            "max_keypoints": 5000,
+            "max_keypoints": 8000,
         },
         "preprocessing": {
             "grayscale": False,
-            "resize_max": 1600,
+            "resize_max": 1024,
         },
     },
     # Global descriptors
@@ -265,6 +266,13 @@ def main(
             pred = model({"image": data["image"].to(device, non_blocking=True)})
             exec_time = elapsed()
         pred = {k: v[0].cpu().numpy() for k, v in pred.items()}
+
+        # If the model chosen was d2net, sort the keypoints by score and keep the max_keypoints best
+        if conf["model"]["name"] == "d2net":
+            idx = np.argsort(pred["scores"])[::-1][: conf["model"]["max_keypoints"]]
+            pred["keypoints"] = pred["keypoints"][idx]
+            pred["scores"] = pred["scores"][idx]
+            pred["descriptors"] = pred["descriptors"][:, idx]
 
         pred["image_size"] = original_size = data["original_size"][0].numpy()
         pred["exec_time"] = np.array([exec_time], dtype=np.float32)
