@@ -102,10 +102,10 @@ def run_reconstruction(
         f"Largest model is #{largest_index} " f"with {largest_num_images} images."
     )
 
-    for filename in ["images.bin", "cameras.bin", "points3D.bin"]:
-        if (sfm_dir / filename).exists():
-            (sfm_dir / filename).unlink()
-        shutil.move(str(models_path / str(largest_index) / filename), str(sfm_dir))
+#    for filename in ["images.bin", "cameras.bin", "points3D.bin"]:
+#        if (sfm_dir / filename).exists():
+#            (sfm_dir / filename).unlink()
+#        shutil.move(str(models_path / str(largest_index) / filename), str(sfm_dir))
     return reconstructions[largest_index]
 
 
